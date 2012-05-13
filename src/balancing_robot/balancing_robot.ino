@@ -6,6 +6,12 @@ int motor1_pin_b = 11;
 
 int inclinometer_pin = A0;
 
+
+Ssdrcs ssegment(7);
+int gnd_pin = 5; // fixme addition gng
+int vcc_pin = 6; // fixme addition power
+
+
 int min_adc = 0; // === min_inclinometer
 int max_adc = 1023; // === max_inclinometer
 
@@ -14,6 +20,8 @@ int max_pwm = 255;
 
 
 int zero_angle = 0; // fixme: bad global variable
+int right_angle = 0; // fixme: bad global variable
+int left_angle = 0; // fixme: bad global variable
 
 float k_p = 0.01;
 
@@ -39,9 +47,28 @@ void setup()
 	digitalWrite(motor1_pin_b, LOW);
 
 
+	pinMode(gnd_pin, OUTPUT);
+	pinMode(vcc_pin, OUTPUT);
+	digitalWrite(gnd_pin, LOW);
+	digitalWrite(vcc_pin, HIGH);
+
+
+
 	Serial.begin(57600);
 	
 	
+	// calculate zero angle
+	digitalWrite(led_pin, HIGH);
+	delay(3000); // 3sec
+	zero_angle = analogRead(inclinometer_pin);
+	digitalWrite(led_pin, LOW);
+
+	// calculate zero angle
+	digitalWrite(led_pin, HIGH);
+	delay(3000); // 3sec
+	zero_angle = analogRead(inclinometer_pin);
+	digitalWrite(led_pin, LOW);
+
 	// calculate zero angle
 	digitalWrite(led_pin, HIGH);
 	delay(3000); // 3sec
