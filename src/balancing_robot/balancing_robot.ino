@@ -1,4 +1,4 @@
-int led_pin = 13;      // select the pin for the LED
+int led_pin = 13;
 
 int motor1_pin_e = 9;
 int motor1_pin_a = 10;
@@ -7,10 +7,7 @@ int motor1_pin_b = 11;
 int inclinometer_pin = A0;
 
 
-Ssdrcs ssegment(7);
-int gnd_pin = 5; // fixme addition gng
-int vcc_pin = 6; // fixme addition power
-
+// fixme: many global variables
 
 int min_adc = 0; // === min_inclinometer
 int max_adc = 1023; // === max_inclinometer
@@ -19,11 +16,11 @@ int min_pwm = 0;
 int max_pwm = 255;
 
 
-int zero_angle = 0; // fixme: bad global variable
-int right_angle = 0; // fixme: bad global variable
-int left_angle = 0; // fixme: bad global variable
+int zero_angle = 512;
+int min_angle = 0; // without zero_angle
+int max_angle = 1023; // without zero_angle
 
-float k_p = 0.01;
+float k_p = 1.0;
 
 float k_i = 0.0;
 float sum_i =0.0;
@@ -32,11 +29,11 @@ float fade_i =0.9;
 float k_d = 0.0;
 float prev_d = 0.0;
 
+
+boolean fast_init = false;
+
 void setup()
 {
-	
-	// declare the ledPin as an OUTPUT:
-	pinMode(led_pin, OUTPUT);
 	
 	pinMode(motor1_pin_e, OUTPUT);
 	pinMode(motor1_pin_a, OUTPUT);
@@ -47,40 +44,65 @@ void setup()
 	digitalWrite(motor1_pin_b, LOW);
 
 
-	pinMode(gnd_pin, OUTPUT);
-	pinMode(vcc_pin, OUTPUT);
-	digitalWrite(gnd_pin, LOW);
-	digitalWrite(vcc_pin, HIGH);
-
-
-
 	Serial.begin(57600);
 	
 	
-	// calculate zero angle
-	digitalWrite(led_pin, HIGH);
-	delay(3000); // 3sec
-	zero_angle = analogRead(inclinometer_pin);
-	digitalWrite(led_pin, LOW);
 
-	// calculate zero angle
-	digitalWrite(led_pin, HIGH);
-	delay(3000); // 3sec
-	zero_angle = analogRead(inclinometer_pin);
-	digitalWrite(led_pin, LOW);
 
-	// calculate zero angle
-	digitalWrite(led_pin, HIGH);
-	delay(3000); // 3sec
-	zero_angle = analogRead(inclinometer_pin);
-	digitalWrite(led_pin, LOW);
+	if (fast_init) {
+		zero_angle = 934;
+		min_angle = -145;
+		max_angle = 77;
+	} else {
+		// calculate zero angle
+		delay(3000); // 3sec
+		digitalWrite(led_pin, HIGH);
+		delay(10000); // 10sec
+		zero_angle = analogRead(inclinometer_pin);
+		digitalWrite(led_pin, LOW);
+		
+		// calculate right angle
+		delay(3000); // 3sec
+		digitalWrite(led_pin, HIGH);
+		delay(10000); // 10sec
+		min_angle = analogRead(inclinometer_pin) - zero_angle;
+		digitalWrite(led_pin, LOW);
+
+		// calculate zero angle
+		delay(3000); // 3sec
+		digitalWrite(led_pin, HIGH);
+		delay(10000); // 10sec
+		max_angle = analogRead(inclinometer_pin) - zero_angle;
+		digitalWrite(led_pin, LOW);
+	}
+	
+
+
+
+
+
+
+	if (min_angle>max_angle){
+		int tmp; 
+		tmp = max_angle;
+		max_angle = min_angle;
+		min_angle = tmp;
+	}
+
+	//Serial.println(zero_angle);
+	//Serial.println(min_angle);
+	//Serial.println(max_angle);
 }
 
-
-float read_inclinometer()
+int read_inclinometer()
 {
-	float angle_of_hade = 0.0;
-	angle_of_hade = (float)(analogRead(inclinometer_pin) - zero_angle);
+	int angle_of_hade;
+	//int ret;
+	angle_of_hade = constrain((analogRead(inclinometer_pin) - zero_angle), min_angle, max_angle);
+	
+	//angle_of_hade = (analogRead(inclinometer_pin) - zero_angle);
+	//ret = constrain(angle_of_hade, min_angle, max_angle);
+	
 	return angle_of_hade;
 }
 
@@ -96,40 +118,48 @@ void motor_control(int speed, boolean direction)
 	}
 }
 
+
 int mymap(int x, int in_min, int in_max, int out_min, int out_max)
 {
+	long tmp;
+	tmp = ((long)x - (long)in_min) * ((long)out_max - (long)out_min) / ((long)in_max - (long)in_min) + (long)out_min;
 	// because strange problem with: map - not work :(
-	return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+	return (int)tmp;
 }
 
-int PID(float angle)
+int PID(int iangle)
 {
-	float control;
-	// p
-	control = angle*k_p;
-
-	// i
+	float fangle = (float) iangle;
+	float fcontrol = 0.0;
+	int icontrol =0;
+	// ------------------------ p
+	fcontrol = fangle*k_p;
+	
+	// ------------------------ i
 	//sum_i = 
-	//control = control + sum_i*
+	//fcontrol = fcontrol + sum_i*
+	
+	// ------------------------ d
+	//fcontrol = fcontrol +
+	
+	//fcontrol = fangle*k_p + k_i + k_d;
+	
+	
+	icontrol = (int)fcontrol;
+	icontrol = constrain(icontrol, min_angle, max_angle);
+	icontrol = map(icontrol, min_angle, max_angle, -max_pwm, max_pwm); //fixme min_angle -> min_control ; max_angle -> max_control
+	//Serial.println(icontrol);
 
-	// d
-	//control = control +
-
-	control = angle*k_p + k_i + k_d;
-
-	//Serial.println((int)control);	
-	//Serial.println((int)mymap(control, -max_adc/2, max_adc/2, -max_pwm, max_pwm));		
-
-	//return mymap((int)control, -max_adc/2, max_adc/2, -max_pwm, max_pwm);
-	return control;
+	return icontrol;
 }
 
 void loop()
 {
 
 
-	float angle;
-	int control_value;
+	int angle;
+
+	int control_value = 0;
 	int direction;
 	int speed;
 
@@ -139,15 +169,15 @@ void loop()
 	int tmp;
 	for(int i=-50; i<50;i++){
 		tmp = mymap(i, -max_adc/2, max_adc/2, -max_pwm, max_pwm);
-		Serial.println(tmp);
+		//Serial.println(tmp);
 		//delay(200);
 	}
 */
 
 	angle = read_inclinometer();
 	//Serial.println((int)angle);
-
-
+	
+	
 	control_value = PID(angle);
 	//Serial.println(control_value);
 
