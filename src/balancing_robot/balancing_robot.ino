@@ -29,12 +29,11 @@ const int max_angle = 1023; // without zero_angle
 float k_p = 1.0;
 
 float k_i = 0.0;
-float sum_i =0.0;
-float fade_i =0.9;
+double sum_of_angle = 0.0;
 
 float k_d = 0.0;
-float prev_d = 0.0;
-
+float previous_angle = 0.0;
+unsigned long previous_time = 0;
 
 boolean fast_init = false;
 
@@ -63,8 +62,6 @@ void setup()
 
 	if (fast_init) { // fixme
 		global_zero_angle = 934;
-		min_angle = -145;
-		max_angle = 77;
 	} else {
 		// calculate zero angle
 		digitalWrite(led_pin, HIGH);
@@ -89,7 +86,10 @@ void setup()
 
 float read_inclinometer()
 {
-	float xVal, yVal, zVal; //Variables for the values from the sensor
+	//Variables for the values from the sensor
+	//float xVal;
+	float yVal;
+	float zVal;
 
 	//xVal = (float) mySensor.readAxis('x'); //Read out the 'x' Axis (char)
 	yVal = (float) mySensor.readAxis('y'); //Read out the 'y' Axis (char)
@@ -105,10 +105,10 @@ float read_inclinometer()
 	return angle_of_hade;
 }
 
-void motor_control(int speed, boolean direction)
+void motor_control(int speed)
 {
-	analogWrite(motor1_pin_e, speed);
-	if (direction) {
+	analogWrite(motor1_pin_e, constrain(abs(speed), min_pwm, max_pwm));
+	if (speed>0) {
 		digitalWrite(motor1_pin_a, HIGH);
 		digitalWrite(motor1_pin_b, LOW);
 	} else {
@@ -118,38 +118,26 @@ void motor_control(int speed, boolean direction)
 }
 
 
-int mymap(int x, int in_min, int in_max, int out_min, int out_max)
+int PID(float angle)
 {
-	long tmp;
-	tmp = ((long)x - (long)in_min) * ((long)out_max - (long)out_min) / ((long)in_max - (long)in_min) + (long)out_min;
-	// because strange problem with: map - not work :(
-	return (int)tmp;
-}
+	// Proportional Integral Derivative algorithm
 
-int PID(int iangle)
-{
-	float fangle = (float) iangle;
-	float fcontrol = 0.0;
-	int icontrol =0;
-	// ------------------------ p
-	fcontrol = fangle*k_p;
-	
-	// ------------------------ i
-	//sum_i = 
-	//fcontrol = fcontrol + sum_i*
-	
-	// ------------------------ d
-	//fcontrol = fcontrol +
-	
-	//fcontrol = fangle*k_p + k_i + k_d;
-	
-	
-	icontrol = (int)fcontrol;
-	icontrol = constrain(icontrol, min_angle, max_angle);
-	icontrol = map(icontrol, min_angle, max_angle, -max_pwm, max_pwm); //fixme min_angle -> min_control ; max_angle -> max_control
-	//Serial.println(icontrol);
+	float control = 0.0;
 
-	return icontrol;
+        // Proportional coefficient
+	control = k_p * angle;
+	
+        // Integral coefficient
+	sum_of_angle += angle;
+	control += k_i * sum_of_angle;
+	
+        // Derivative coefficient
+	unsigned long current_time = micros();
+	control += k_d * (angle - previous_angle)/(current_time - previous_time);
+	previous_angle = angle; // save angle
+	previous_time = current_time; // save time
+	
+	return control;
 }
 
 void loop()
@@ -180,12 +168,11 @@ void loop()
 	control_value = PID(angle);
 	//Serial.println(control_value);
 
-	if (control_value>0) {direction=true;} else {direction=false;}
-	speed = abs(control_value);
+	speed = control_value;
 	
 	
 
-	motor_control(speed, direction);
+	motor_control(speed);
 
 	delay(10);
 }
