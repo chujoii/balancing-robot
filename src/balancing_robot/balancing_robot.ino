@@ -1,24 +1,30 @@
-int led_pin = 13;
+#include <Wire.h> //Include the Wire library
+#include <MMA_7455.h> //Include the MMA_7455 library
 
-int motor1_pin_e = 9;
-int motor1_pin_a = 10;
-int motor1_pin_b = 11;
-
-int inclinometer_pin = A0;
+MMA_7455 mySensor = MMA_7455(); //Make an instance of MMA_7455 accelerometer
 
 
-// fixme: many global variables
-
-int min_adc = 0; // === min_inclinometer
-int max_adc = 1023; // === max_inclinometer
-
-int min_pwm = 0;
-int max_pwm = 255;
 
 
-int zero_angle = 512;
-int min_angle = 0; // without zero_angle
-int max_angle = 1023; // without zero_angle
+const int led_pin = 13;
+
+const int motor1_pin_e = 9;
+const int motor1_pin_a = 10;
+const int motor1_pin_b = 11;
+
+
+
+
+const int min_adc = 0; // === min_inclinometer
+const int max_adc = 1023; // === max_inclinometer
+
+const int min_pwm = 0;
+const int max_pwm = 255;
+
+
+float global_zero_angle = 0.0;
+const int min_angle = 0; // without zero_angle
+const int max_angle = 1023; // without zero_angle
 
 float k_p = 1.0;
 
@@ -44,63 +50,56 @@ void setup()
 	digitalWrite(motor1_pin_b, LOW);
 
 
+	// Set the sensitivity you want to use
+	// 2 = 2g, 4 = 4g, 8 = 8g
+	mySensor.initSensitivity(2);
+	// Calibrate the Offset, that values corespond in 
+	// flat position to: xVal = -30, yVal = -20, zVal = +20
+	// !!!Activate this after having the first values read out!!!
+	//mySensor.calibrateOffset(0.23, -43.2, 12.43);
+
 	Serial.begin(57600);
-	
-	
 
 
-	if (fast_init) {
-		zero_angle = 934;
+	if (fast_init) { // fixme
+		global_zero_angle = 934;
 		min_angle = -145;
 		max_angle = 77;
 	} else {
 		// calculate zero angle
-		delay(3000); // 3sec
 		digitalWrite(led_pin, HIGH);
-		delay(10000); // 10sec
-		zero_angle = analogRead(inclinometer_pin);
+		delay(500); // 0.5sec
 		digitalWrite(led_pin, LOW);
-		
-		// calculate right angle
-		delay(3000); // 3sec
+		delay(500); // 0.5sec
 		digitalWrite(led_pin, HIGH);
-		delay(10000); // 10sec
-		min_angle = analogRead(inclinometer_pin) - zero_angle;
+		delay(500); // 0.5sec
 		digitalWrite(led_pin, LOW);
-
-		// calculate zero angle
-		delay(3000); // 3sec
+		delay(500); // 0.5sec
 		digitalWrite(led_pin, HIGH);
-		delay(10000); // 10sec
-		max_angle = analogRead(inclinometer_pin) - zero_angle;
+		delay(500); // 0.5sec
 		digitalWrite(led_pin, LOW);
+		delay(500); // 0.5sec
+		global_zero_angle = read_inclinometer();
 	}
 	
-
-
-
-
-
-
-	if (min_angle>max_angle){
-		int tmp; 
-		tmp = max_angle;
-		max_angle = min_angle;
-		min_angle = tmp;
-	}
-
-	//Serial.println(zero_angle);
+	Serial.println(global_zero_angle);
 	//Serial.println(min_angle);
 	//Serial.println(max_angle);
 }
 
-int read_inclinometer()
+float read_inclinometer()
 {
-	int angle_of_hade;
-	//int ret;
-	angle_of_hade = constrain((analogRead(inclinometer_pin) - zero_angle), min_angle, max_angle);
+	float xVal, yVal, zVal; //Variables for the values from the sensor
+
+	//xVal = (float) mySensor.readAxis('x'); //Read out the 'x' Axis (char)
+	yVal = (float) mySensor.readAxis('y'); //Read out the 'y' Axis (char)
+	zVal = (float) mySensor.readAxis('z'); //Read out the 'z' Axis (char)
 	
-	//angle_of_hade = (analogRead(inclinometer_pin) - zero_angle);
+	float angle_of_hade;
+
+	angle_of_hade = atan(yVal/zVal) - global_zero_angle;
+	
+	//angle_of_hade = (analogRead(inclinometer_pin) - global_zero_angle);
 	//ret = constrain(angle_of_hade, min_angle, max_angle);
 	
 	return angle_of_hade;
