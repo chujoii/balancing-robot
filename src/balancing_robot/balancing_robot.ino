@@ -4,27 +4,19 @@
 MMA_7455 mySensor = MMA_7455(); //Make an instance of MMA_7455 accelerometer
 
 
-
+const int dt_us = 100; // time between steps
+const int start_dt_s = 5; // time before calculate zero angle
 
 const int led_pin = 13;
 
-const int motor1_pin_e = 9;
-const int motor1_pin_a = 10;
-const int motor1_pin_b = 11;
-
-
-
-
-const int min_adc = 0; // === min_inclinometer
-const int max_adc = 1023; // === max_inclinometer
+const int motor1_pin_pwm = 9;
+const int motor1_pin_a   = 10;
+const int motor1_pin_b   = 11;
 
 const int min_pwm = 0;
 const int max_pwm = 255;
 
-
 float global_zero_angle = 0.0;
-const int min_angle = 0; // without zero_angle
-const int max_angle = 1023; // without zero_angle
 
 float k_p = 1.0;
 
@@ -37,52 +29,9 @@ unsigned long previous_time = 0;
 
 boolean fast_init = false;
 
-void setup()
-{
-	
-	pinMode(motor1_pin_e, OUTPUT);
-	pinMode(motor1_pin_a, OUTPUT);
-	pinMode(motor1_pin_b, OUTPUT);
-	
-	digitalWrite(motor1_pin_e, LOW);
-	digitalWrite(motor1_pin_a, LOW);
-	digitalWrite(motor1_pin_b, LOW);
+boolean debug = true;
 
 
-	// Set the sensitivity you want to use
-	// 2 = 2g, 4 = 4g, 8 = 8g
-	mySensor.initSensitivity(2);
-	// Calibrate the Offset, that values corespond in 
-	// flat position to: xVal = -30, yVal = -20, zVal = +20
-	// !!!Activate this after having the first values read out!!!
-	//mySensor.calibrateOffset(0.23, -43.2, 12.43);
-
-	Serial.begin(57600);
-
-
-	if (fast_init) { // fixme
-		global_zero_angle = 934;
-	} else {
-		// calculate zero angle
-		digitalWrite(led_pin, HIGH);
-		delay(500); // 0.5sec
-		digitalWrite(led_pin, LOW);
-		delay(500); // 0.5sec
-		digitalWrite(led_pin, HIGH);
-		delay(500); // 0.5sec
-		digitalWrite(led_pin, LOW);
-		delay(500); // 0.5sec
-		digitalWrite(led_pin, HIGH);
-		delay(500); // 0.5sec
-		digitalWrite(led_pin, LOW);
-		delay(500); // 0.5sec
-		global_zero_angle = read_inclinometer();
-	}
-	
-	Serial.println(global_zero_angle);
-	//Serial.println(min_angle);
-	//Serial.println(max_angle);
-}
 
 float read_inclinometer()
 {
@@ -94,6 +43,8 @@ float read_inclinometer()
 	//xVal = (float) mySensor.readAxis('x'); //Read out the 'x' Axis (char)
 	yVal = (float) mySensor.readAxis('y'); //Read out the 'y' Axis (char)
 	zVal = (float) mySensor.readAxis('z'); //Read out the 'z' Axis (char)
+
+	//yVal = yVal - 128;
 	
 	float angle_of_hade;
 
@@ -105,9 +56,11 @@ float read_inclinometer()
 	return angle_of_hade;
 }
 
+
+
 void motor_control(int speed)
 {
-	analogWrite(motor1_pin_e, constrain(abs(speed), min_pwm, max_pwm));
+	analogWrite(motor1_pin_pwm, constrain(abs(speed), min_pwm, max_pwm));
 	if (speed>0) {
 		digitalWrite(motor1_pin_a, HIGH);
 		digitalWrite(motor1_pin_b, LOW);
@@ -118,7 +71,8 @@ void motor_control(int speed)
 }
 
 
-int PID(float angle)
+
+float PID(float angle)
 {
 	// Proportional Integral Derivative algorithm
 
@@ -140,39 +94,70 @@ int PID(float angle)
 	return control;
 }
 
+
+
+void setup()
+{
+	
+	pinMode(motor1_pin_pwm, OUTPUT);
+	pinMode(motor1_pin_a,   OUTPUT);
+	pinMode(motor1_pin_b,   OUTPUT);
+	
+	digitalWrite(motor1_pin_pwm, LOW);
+	digitalWrite(motor1_pin_a,   LOW);
+	digitalWrite(motor1_pin_b,   LOW);
+
+
+	// Set the sensitivity you want to use
+	// 2 = 2g, 4 = 4g, 8 = 8g
+	mySensor.initSensitivity(2);
+	// Calibrate the Offset, that values corespond in 
+	// flat position to: xVal = -30, yVal = -20, zVal = +20
+	// !!!Activate this after having the first values read out!!!
+	//mySensor.calibrateOffset(0.23, -43.2, 12.43);
+
+	if (debug) {Serial.begin(57600);}
+
+
+	if (fast_init) { // fixme
+		global_zero_angle = 934;
+	} else {
+		// calculate zero angle
+		for (int i=0; i<start_dt_s; i++){
+			delay(500);
+			digitalWrite(led_pin, HIGH);
+			delay(500);
+			digitalWrite(led_pin, LOW);
+		}
+		global_zero_angle = read_inclinometer();
+	}
+
+	if (debug){
+		Serial.print("zero_angle=");
+		Serial.print(global_zero_angle);
+
+		Serial.println();
+	}
+}
+
+
+
 void loop()
 {
-
-
-	int angle;
-
-	int control_value = 0;
-	int direction;
-	int speed;
-
-
-
-/*
-	int tmp;
-	for(int i=-50; i<50;i++){
-		tmp = mymap(i, -max_adc/2, max_adc/2, -max_pwm, max_pwm);
-		//Serial.println(tmp);
-		//delay(200);
-	}
-*/
+	float angle;
+	float motor_speed;
 
 	angle = read_inclinometer();
-	//Serial.println((int)angle);
-	
-	
-	control_value = PID(angle);
-	//Serial.println(control_value);
+	motor_speed = PID(angle);
+	motor_control(motor_speed);
 
-	speed = control_value;
-	
-	
-
-	motor_control(speed);
-
-	delay(10);
+	if (debug){
+		Serial.print("\tangle=");
+		Serial.print(angle);
+		Serial.print("\tmotor=");
+		Serial.print(motor_speed);
+		
+		Serial.println();
+	}
+	delayMicroseconds(dt_us);
 }
