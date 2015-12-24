@@ -8,6 +8,7 @@
 #define INTEGRAL 1
 #define DERIVATIVE 2
 
+#include <math.h>
 #include <Wire.h> //Include the Wire library
 #include <MMA_7455.h> //Include the MMA_7455 library
 
@@ -19,20 +20,22 @@ const int start_dt_s = 5; // time before calculate zero angle
 
 const int led_pin = 13;
 
-const int motor1_pin_pwm = 9;
-const int motor1_pin_a   = 10;
-const int motor1_pin_b   = 11;
+const int motor1_pin_pwm = 10;
+const int motor1_pin_a   = 11;
+const int motor1_pin_b   = 12;
 
 const int min_pwm = 0;
 const int max_pwm = 255;
 
+const float epsilon = 1.0e-10;
+
 float global_zero_angle = 0.0;
 
-float global_coefficient[]          = {1.0, 1.0, 1.0};
-float global_previous_coefficient[] = {1.0, 1.0, 1.0};
-float global_coefficient_step[] = {1.0, 1.0, 1.0};
-float global_func = 0.0;          // for search extremum of function
-float global_previous_func = 0.0; // for search extremum of function
+float global_coefficient[]          = {1.0e5, 0.0, -1.0e10}; //{1.0e5, 0.0, -1.0e9};
+float global_previous_coefficient[] = {1.0, 0.0, 0.0};
+float global_coefficient_step[]     = {1.0, 1.0, 1.0};
+float global_func = 0.0;          // for search extremum (minimum) of function
+float global_previous_func = 0.0; // for search extremum (minimum) of function
 
 double global_sum_of_angle = 0.0;
 float global_previous_angle = 0.0;
@@ -51,44 +54,60 @@ int learn_coeff_num = 0; // 0 Proportional; 1 Integral; 2 Derivative algorithm
 
 boolean fast_init = false;
 
-boolean debug = true;
+boolean debug = false;
 
 
 
 float read_inclinometer()
 {
 	//Variables for the values from the sensor
-	//float xVal;
-	float yVal;
-	float zVal;
+	//char xVal;
+        char yVal;
+	char zVal;
 
-	//xVal = (float) mySensor.readAxis('x'); //Read out the 'x' Axis (char)
-	yVal = (float) mySensor.readAxis('y'); //Read out the 'y' Axis (char)
-	zVal = (float) mySensor.readAxis('z'); //Read out the 'z' Axis (char)
+	//xVal = mySensor.readAxis('x'); //Read out the 'x' Axis (char)
+	yVal = mySensor.readAxis('y'); //Read out the 'y' Axis (char)
+	zVal = mySensor.readAxis('z'); //Read out the 'z' Axis (char)
 
-	//yVal = yVal - 128;
-	
-	float angle_of_hade;
+	// fixme  strange, but char->float not work (signed char interpreter as unsigned byte)
+	//double x = (int) xVal;
+	double y = (int) yVal;
+	double z = (int) zVal;
 
-	angle_of_hade = atan(yVal/zVal) - global_zero_angle;
+	if (debug){
+		Serial.print("\ty=");
+		Serial.print(y);
+		Serial.print("\tz=");
+		Serial.print(z);
+	}
 	
-	//angle_of_hade = (analogRead(inclinometer_pin) - global_zero_angle);
-	//ret = constrain(angle_of_hade, min_angle, max_angle);
-	
+	double angle_of_hade;
+
+	if (abs(z) < epsilon){
+		angle_of_hade = 0.0;
+	} else {
+		angle_of_hade = atan(y/z) - global_zero_angle;
+	}
+
 	return angle_of_hade;
 }
 
 
 
-void motor_control(int speed)
+void motor_control(float speed)
 {
-	analogWrite(motor1_pin_pwm, constrain(abs(speed), min_pwm, max_pwm));
-	if (speed>0) {
+	int motor_pwm = (int) constrain(abs(speed), min_pwm, max_pwm);
+	analogWrite(motor1_pin_pwm, motor_pwm);
+	if (speed<0) {
 		digitalWrite(motor1_pin_a, HIGH);
 		digitalWrite(motor1_pin_b, LOW);
 	} else {
 		digitalWrite(motor1_pin_a, LOW);
 		digitalWrite(motor1_pin_b, HIGH);
+	}
+	if (debug){
+		Serial.print("\tmotor=");
+		Serial.print(motor_pwm);
 	}
 }
 
@@ -108,8 +127,14 @@ float PID(float previous_angle, unsigned int previous_time, float current_angle,
 	control += global_coefficient[INTEGRAL] * global_sum_of_angle;
 	
         // Derivative coefficient
-	control += global_coefficient[DERIVATIVE] * (current_angle - previous_angle)/(current_time - previous_time);
-	
+	float dt = (float) (current_time - previous_time);
+	control += global_coefficient[DERIVATIVE] * (current_angle - previous_angle)/dt;
+	/*
+	Serial.print("\tda=");
+	Serial.print(current_angle - previous_angle);
+	Serial.print("\tdt=");
+	Serial.print(dt);
+	*/
 	return control;
 }
 
@@ -146,6 +171,10 @@ void learn(int coeff_num)
 {
 	// Gauss–Seidel method -OR- method of successive displacement -OR- iterative method of coordinate descent
 	float result;
+	
+
+	// select new coefficient
+	
 }
 
 void setup()
@@ -168,7 +197,7 @@ void setup()
 	// !!!Activate this after having the first values read out!!!
 	//mySensor.calibrateOffset(0.23, -43.2, 12.43);
 
-	if (debug) {Serial.begin(57600);}
+	if (debug) {Serial.begin(115200);}
 
 
 	if (fast_init) { // fixme
@@ -217,8 +246,8 @@ void loop()
 	if (debug){
 		Serial.print("\tangle=");
 		Serial.print(current_angle);
-		Serial.print("\tmotor=");
-		Serial.print(motor_speed);
+		//Serial.print("\tmotor=");
+		//Serial.print(motor_speed);
 		
 		Serial.println();
 	}
